@@ -2,3 +2,6 @@ build/
 .sconsign.dblite
 .build_*/
 *.o
+.project
+.cproject
+.settings/
