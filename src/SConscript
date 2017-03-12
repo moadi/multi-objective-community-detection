@@ -1,0 +1,109 @@
+#!/usr/bin/scons
+
+import os
+
+##################################################
+# Compile options
+##################################################
+
+# --------------------------------------------------
+# Initialize the environment
+# --------------------------------------------------
+Import('global_env global_options install_dir')
+
+package_name = "nsga-comm-detect"
+env = global_env.Clone()
+
+# --------------------------------------------------
+# Compile flags
+# --------------------------------------------------
+options = Split("""
+""")
+options.extend(global_options)
+
+# Command line flags
+commandline_defines = []
+for key, value in ARGLIST:
+    if key == 'define':
+        commandline_defines.append('-D' + value)
+options.extend(commandline_defines)
+
+# --------------------------------------------------
+# Target specific compile flags Example
+# --------------------------------------------------
+#if GetOption('debug_build'):
+#    extra_options = Split("-g -O0")
+#else:
+#    extra_options = Split("-O3")
+#
+#options.extend(extra_options)
+
+# --------------------------------------------------
+# Add options to CPPFLAGS
+# --------------------------------------------------
+env.Append(CCFLAGS = options)
+
+# --------------------------------------------------
+# Add Include Search Paths
+# --------------------------------------------------
+#env.Append(CPPPATH = [
+#    'include',
+#    ])
+#
+#env.Append(CPPPATH = [
+#    install_dir + "/include",
+#    install_dir + "/include/Cisco",
+#    '/usr/local/ssl/include'
+#    ])
+
+# --------------------------------------------------
+# Add Library Search Paths
+# --------------------------------------------------
+env.Append(LIBPATH = [
+    ])
+
+# --------------------------------------------------
+# Add Libraries
+# --------------------------------------------------
+env.Append(LIBS = [
+    ])
+
+# --------------------------------------------------
+# Add Link Flags
+# --------------------------------------------------
+env.Append(LINKFLAGS = [])
+
+##################################################
+# Source File list
+##################################################
+sources = Split("""
+main.cpp
+graph.cpp
+""")
+
+# The list of object files
+object_list = env.Object(source = sources)
+
+##################################################
+# Build the library
+##################################################
+
+# --------------------------------------------------
+# Program to build
+# --------------------------------------------------
+bin_target = env.Program('nsga-comm-detect', source = object_list)
+
+##################################################
+# Install
+##################################################
+
+# --------------------------------------------------
+# Setup Export directories
+# --------------------------------------------------
+
+#install_bindir = os.path.join(install_dir, "bin")
+
+# --------------------------------------------------
+# Install Targets
+# --------------------------------------------------
+env.Install(install_dir, bin_target)
