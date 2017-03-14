@@ -43,7 +43,6 @@ global_env["CXXFLAGS"] = "-std=c++11 -pthread"
 # Global options
 # --------------------------------------------------
 global_options = Split("""
--Wall
 -Weverything
 -Wno-c++98-compat
 """)

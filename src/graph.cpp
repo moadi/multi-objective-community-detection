@@ -6,400 +6,290 @@
  */
 
 #include "graph.h"
+#include "logging.h"
 
-using namespace std;
-
-int edge_counter;
-
-/*
- * Function to reset the file pointer to the beginning of GML file
- * Takes as a parameter a reference to the file pointer, clears the
- * flags and sets the pointer to the beginning.
- */
-void reset_pointer(ifstream &fin)
+void Graph::reset_file_pointer()
 {
-	fin.clear();
-	fin.seekg(0, fin.beg);
-}
-
-
-/*
- * Function to count the number of vertices in GML file.
- * Scans the file for "node" entries and updates the counter.
- * Returns the number of vertices.
- */
-int count_vertices(ifstream &fin) {
-	string line;
-	int result = 0;
-	while (!fin.eof())
-	{
-		getline(fin, line);
-		if (string::npos != line.find("node"))
-			result++;
-		if (string::npos != line.find("edge"))
-			break;
-	}
-	reset_pointer(fin);
-	return result;
+    fin.clear();
+    fin.seekg(0, fin.beg);
 }
 
 /*
- * Count vertices in Pajek file
+ * Scans the GML file for "node" entries and updates the counter.
  */
-int count_vertices_pajek(ifstream& fin)
+uint64_t Graph::count_vertices_gml()
 {
-	string line;
-	char * ptr;
+    log_msg("Entering %s", __FUNCTION__);
+    std::string line;
+    uint64_t result = 0;
+    while (!fin.eof()) {
+        getline(fin, line);
+        if (std::string::npos != line.find("node"))
+            result++;
+        if (std::string::npos != line.find("edge"))
+            break;
+    }
+    reset_file_pointer();
+    log_msg("Leaving %s", __FUNCTION__);
+    return result;
+}
+
+/**
+ * Note: This function does not reset the file pointer.
+ * After the vertices section, the edges are expected
+ */
+uint64_t Graph::count_vertices_pajek()
+{
+    log_msg("Entering %s", __FUNCTION__);
+    std::string line;
+    char* location;
+    uint64_t result = 0;
+
+    while(std::getline(fin, line)) {
+        if (std::string::npos != line.find("Vertices")) {
+            location = std::strstr(line.c_str(), "Vertices");
+            uint64_t vertex_count = 0;
+            int count = sscanf(location, "Vertices %d", &vertex_count);
+            // if no match found
+            if (count == 0) {
+                std::cerr << "Unable to parse number of vertices in pajek file\n";
+                exit(EXIT_FAILURE);
+            }
+            else
+                result = vertex_count;
+            break;
+        }
+    }
+    log_msg("Leaving %s", __FUNCTION__);
+    return result;
+}
+
+void Graph::parse_pajek()
+{
+    log_msg("Entering %s", __FUNCTION__);
+
+    std::string line;
+    num_vertices = count_vertices_pajek();
+    vertices.resize(num_vertices);
+
+    //Skip till edge list starts
+    do {
+        getline(fin, line);
+        if (std::string::npos != line.find("Edges") ||
+            std::string::npos != line.find("Arcs")) {
+
+            break;
+        }
+    } while (!fin.eof());
+
+    // Parse the edges listed in the pajek file
+    // and build up the degree count and neighbor
+    // list
+    uint64_t edge_counter = 0;
+    int64_t source = -1, target = -1;
+    while (fin >> source >> target)
+    {
+        if (idx_type == GraphIndex::GRAPH_INDEX_ONE_BASED)
+        {
+            --source;
+            --target;
+        }
+
+        vertices[source].degree++;
+        vertices[target].degree++;
+        vertices[source].neighbors.push_back(target);
+        vertices[target].neighbors.push_back(source);
+        edges.emplace(std::make_pair(source, target));
+    }
+
+    if(!fin)
+    {
+        std::cerr << "An error occurred while parsing pajek edgelist \n";
+        exit(EXIT_FAILURE);
+    }
+    fin.close();
+
+    log_msg("Leaving %s", __FUNCTION__);
+}
+
+void Graph::parse_gml()
+{
+    log_msg("Entering %s", __FUNCTION__);
+
+    num_vertices = count_vertices_gml();
+    vertices.resize(num_vertices);
+
+    /**
+     * Get edges in the GML file
+     * The GML edge information looks something like:
+     *      edge
+     *      [
+     *          source <x>
+     *          target <y>
+     *      ]
+     */
+    std::string line;
+    char * ptr;
     char * location;
-	int result;
-	getline(fin, line);
-	if(string::npos != line.find("Vertices"))
-	{
-		ptr = new char[line.size() + 1];
-		ptr[line.size()] = '\0';
-		memcpy(ptr, line.c_str(), line.size());
-		location = strstr(ptr, "Vertices");
-		sscanf(location, "Vertices %d", &result);
-        delete[] ptr;
-	}
-	return result;
+
+    int64_t source = -1, target = -1;
+    while (!fin.eof())
+    {
+        std::getline(fin, line);
+        if (!(std::string::npos != line.find("edge")))
+            continue;
+
+        source = target = -1;
+        do {
+            getline(fin, line);
+            if (string::npos != line.find("source")) {
+                ptr = new char[line.size() + 1];
+                ptr[line.size()] = '\0';
+                memcpy(ptr, line.c_str(), line.size());
+                location = strstr(ptr, "source");
+                sscanf(location, "source %i", &source);
+                delete[] ptr;
+            }
+            if (string::npos != line.find("target")) {
+                ptr = new char[line.size() + 1];
+                ptr[line.size()] = '\0';
+                memcpy(ptr, line.c_str(), line.size());
+                location = strstr(ptr, "target");
+                sscanf(location, "target %i", &target);
+                delete[] ptr;
+            }
+            if (string::npos != line.find("]"))
+                break;
+        } while (!fin.eof());
+
+        if (source >= 0 && target >= 0) {
+            if (isKarate) {
+                vertex[--source].degree++;
+                vertex[--target].degree++;
+            } else {
+                vertex[source].degree++;
+                vertex[target].degree++;
+            }
+        }
+    }
+
+    //Calculate the number of edges to resize the map
+    int tot_deg = 0;
+    for (int i = 0; i < num_vertices; i++) {
+        tot_deg += vertex[i].degree;
+    }
+    num_edges = tot_deg / 2;
+
+    //  cout << "Average degree = " << (double) tot_deg / num_vertices << "\n\n";
+
+    edges.reserve(num_edges);
+
+    //Read in the edges
+    reset_pointer(fin);
+    int * count;
+    for (int i = 0; i < num_vertices; i++) {
+        vertex[i].neighbors = new int[vertex[i].degree];
+        //vertex[i].neighbors.reserve(vertex[i].degree);
+    }
+
+    count = new int[num_vertices](); //zero-initialize temporary edge counts
+    while (!fin.eof()) {
+        getline(fin, line);
+        if (!(string::npos != line.find("edge"))) //loop till edge entry
+            continue;
+
+        source = target = -1;
+        do {
+            getline(fin, line);
+            if (string::npos != line.find("source")) {
+                //grab the source
+                ptr = new char[line.size() + 1];
+                ptr[line.size()] = '\0';
+                memcpy(ptr, line.c_str(), line.size());
+                location = strstr(ptr, "source");
+                sscanf(location, "source %i", &source);
+                delete[] ptr;
+            }
+            if (string::npos != line.find("target")) {
+                //grab the target
+                ptr = new char[line.size() + 1];
+                ptr[line.size()] = '\0';
+                memcpy(ptr, line.c_str(), line.size());
+                location = strstr(ptr, "target");
+                sscanf(location, "target %i", &target);
+                delete[] ptr;
+            }
+            if (string::npos != line.find("]")) //break if "]" is found
+                break;
+        } while (!fin.eof());
+        if (source >= 0 && target >= 0) {
+            if (isKarate) {
+                target--;
+                source--;
+            }
+            vertex[source].neighbors[count[source]] = target;
+            vertex[target].neighbors[count[target]] = source;
+
+            //update counts
+            count[source]++;
+            count[target]++;
+
+            if (source < target) {
+                pair<int, int> key;
+                key = make_pair(source, target);
+                Edge edge;
+                edge.v1 = source;
+                edge.v2 = target;
+                edges.insert(make_pair(key, edge));
+                //edges[key] = edge;
+            } else {
+                pair<int, int> key;
+                key = make_pair(target, source);
+                Edge edge;
+                edge.v1 = target;
+                edge.v2 = source;
+                edges.insert(make_pair(key, edge));
+                //edges[key] = edge;
+            }
+        }
+    }
+    delete[] count;
+    fin.close();
 }
 
-Graph::Graph(char * fileName)
+Graph::Graph(const std::string& file_name,
+             GraphFormat _format = GraphFormat::GRAPH_FORMAT_PAJEK,
+             GraphIndex _idx_type = GraphIndex::GRAPH_INDEX_ONE_BASED) :
+
+        idx_type(_idx_type),
+        format(_format)
 {
-	ifstream fin(fileName);
+    std::ifstream fin(file_name);
+    if (!fin)
+    {
+        std::cerr << "Unable to open file: " << file_name.c_str() << "\n";
+        exit(EXIT_FAILURE);
+    }
 
-	if(!fin)
-	{
-		cerr << "Invalid file name! \n";
-		exit(EXIT_FAILURE);
-	}
+    if (format == GraphFormat::GRAPH_FORMAT_PAJEK)
+        parse_pajek();
+    else if (format == GraphFormat::GRAPH_FORMAT_EDGELIST)
+        parse_edgelist();
+    else
+        parse_gml();
 
-	bool isKarate = false;
-
-	string file(fileName);
-
-	if(string::npos != file.find("karate.gml"))
-		isKarate = true;
-
-	if (string::npos != file.find(".net"))
-	{
-		string line;
-		num_vertices = count_vertices_pajek(fin);
-
-		vertex = new Vertex[num_vertices];
-		//vertex.reserve(num_vertices);
-
-		for(int i = 0; i < num_vertices; i++)
-		{
-			vertex[i].id = i;
-			vertex[i].degree = 0;
-		}
-        int vertex_counter = 0;
-		//Read vertex IDs
-		do
-		{
-			getline(fin, line);
-//			string id_text;
-			if(string::npos != line.find("Edges") || string::npos != line.find("Arcs"))
-				break;
-//            std::string::size_type start_pos = line.find("\"");
-//			int id;
-//			if (string::npos != start_pos)
-//			{
-//				++start_pos;
-//                std::string::size_type i;
-//				for(i = start_pos; line[i] != '\"'; i++);
-//				id_text = line.substr(start_pos, i - start_pos);
-//				id = atoi(id_text.c_str());
-//                vertex[vertex_counter++].node_id = id;
-//				id--;
-//				vertex[id].id = id;
-//				vertex[id].degree = 0;
-//			}
-		}
-		while(!fin.eof());
-
-
-
-		int source, target;
-
-		//Calculate the degree of each vertex
-		while(fin >> source >> target)
-		{
-			vertex[--source].degree++;
-			vertex[--target].degree++;
-		}
-
-		//Calculate the number of edges to resize the map
-		int tot_deg = 0;
-		for(int i = 0;i < num_vertices; i++)
-		{
-			tot_deg += vertex[i].degree;
-		}
-        
-		num_edges = tot_deg/2;
-
-//		cout << "Average degree = " << (double) tot_deg / num_vertices << "\n\n";
-        
-//      cout << "Total degree = " << tot_deg << "\n\n";
-
-		edges.reserve(num_edges);
-
-		reset_pointer(fin);
-
-		//Loop till we reach the edges entry again
-		while(!fin.eof())
-		{
-			getline(fin, line);
-			if (string::npos != line.find("Edges"))
-				break;
-		}
-
-		//Initialize the neighbors
-		for(int i = 0; i < num_vertices; i++)
-		{
-			vertex[i].neighbors = new int[vertex[i].degree];
-			//vertex[i].neighbors.reserve(vertex[i].degree);
-		}
-		int * count = new int[num_vertices]();
-		while (fin >> source >> target)
-		{
-			--source;
-			--target;
-			pair<int, int> edge_key;
-			Edge edge;
-			if(source < target)
-			{
-				edge.v1 = source;
-				edge.v2 = target;
-				edge_key = make_pair(source, target);
-			}
-			else
-			{
-				edge.v1 = target;
-				edge.v2 = source;
-				edge_key = make_pair(target, source);
-			}
-			edges.insert(make_pair(edge_key, edge));
-			vertex[source].neighbors[count[source]] = target;
-			vertex[target].neighbors[count[target]] = source;
-			count[source]++;
-			count[target]++;
-		}
-		delete[] count;
-		fin.close();
-	}
-	else
-	{
-		//cout<<"Calculating number of vertices... \n";
-		num_vertices = count_vertices(fin); //count all vertices
-		//cout<<"Done \n";
-
-		vertex = new Vertex[num_vertices]; //create array of vertices
-		//vertex.reserve(num_vertices);
-
-		//Get all vertex IDs
-		string line;
-		char * ptr;
-        char * location;
-		int id;
-		for(int i=0; i < num_vertices; i++)
-		{
-			vertex[i].degree = 0;
-			do
-			{
-				getline(fin, line);
-			}
-			while(!(string::npos != line.find("node")));
-
-			do
-			{
-				getline(fin, line);
-				if (string::npos != line.find("id"))
-                {
-                    ptr = new char[line.size()+1];
-                    ptr[line.size()]='\0';
-                    memcpy(ptr, line.c_str(), line.size());
-                    location = strstr(ptr, "id");
-                    if(isKarate)
-                    {
-                        sscanf(location, "id %d", &id);
-                        id--;
-                        vertex[i].id = id;
-                    }
-                    else
-                        sscanf(location, "id %d", &vertex[i].id);
-                    
-                    delete[] ptr;
-                }
-			if (string::npos != line.find("]"))
-				break;
-			}
-			while(!fin.eof());
-		}
-
-		//Get the degree of each vertex
-		int source, target;
-		while (!fin.eof())
-		{
-			getline(fin, line);
-			if (!(string::npos != line.find("edge")))
-				continue;
-
-			source = target = -1;
-			do
-			{
-				getline(fin, line);
-				if(string::npos != line.find("source"))
-				{
-					ptr = new char[line.size()+1];
-					ptr[line.size()]='\0';
-					memcpy(ptr, line.c_str(), line.size());
-					location = strstr(ptr, "source");
-					sscanf(location, "source %i", &source);
-                    delete[] ptr;
-				}
-				if(string::npos != line.find("target"))
-				{
-					ptr = new char[line.size()+1];
-					ptr[line.size()]='\0';
-					memcpy(ptr, line.c_str(), line.size());
-					location = strstr(ptr, "target");
-					sscanf(location, "target %i", &target);
-                    delete[] ptr;
-				}
-				if(string::npos != line.find("]"))
-					break;
-			}
-			while(!fin.eof());
-
-			if(source>=0 && target>=0)
-			{
-				if(isKarate)
-				{
-					vertex[--source].degree++;
-					vertex[--target].degree++;
-				}
-				else
-				{
-					vertex[source].degree++;
-					vertex[target].degree++;
-				}
-			}
-		}
-
-		//Calculate the number of edges to resize the map
-		int tot_deg = 0;
-		for(int i = 0;i < num_vertices; i++)
-		{
-			tot_deg += vertex[i].degree;
-		}
-		num_edges = tot_deg/2;
-
-	//	cout << "Average degree = " << (double) tot_deg / num_vertices << "\n\n";
-
-		edges.reserve(num_edges);
-
-		//Read in the edges
-		reset_pointer(fin);
-		int * count;
-		for(int i=0; i < num_vertices; i++)
-		{
-			vertex[i].neighbors = new int[vertex[i].degree];
-			//vertex[i].neighbors.reserve(vertex[i].degree);
-		}
-
-		count = new int[num_vertices](); //zero-initialize temporary edge counts
-		while(!fin.eof())
-		{
-			getline(fin, line);
-			if (!(string::npos != line.find("edge"))) //loop till edge entry
-					continue;
-
-			source = target = -1;
-			do
-			{
-				getline(fin, line);
-				if(string::npos != line.find("source"))
-				{
-					//grab the source
-					ptr = new char[line.size()+1];
-					ptr[line.size()]='\0';
-					memcpy(ptr, line.c_str(), line.size());
-					location = strstr(ptr, "source");
-					sscanf(location, "source %i", &source);
-                    delete[] ptr;
-				}
-				if(string::npos != line.find("target"))
-				{
-					//grab the target
-					ptr = new char[line.size()+1];
-					ptr[line.size()]='\0';
-					memcpy(ptr, line.c_str(), line.size());
-					location = strstr(ptr, "target");
-					sscanf(location, "target %i", &target);
-                    delete[] ptr;
-				}
-				if(string::npos != line.find("]")) //break if "]" is found
-					break;
-			}
-			while(!fin.eof());
-			if (source>=0 && target>=0)
-			{
-				if(isKarate)
-				{
-					target--;
-					source--;
-				}
-				vertex[source].neighbors[count[source]] = target;
-				vertex[target].neighbors[count[target]] = source;
-
-				//update counts
-				count[source]++;
-				count[target]++;
-
-				if(source < target)
-				{
-					pair<int, int> key;
-					key = make_pair(source, target);
-					Edge edge;
-					edge.v1 = source;
-					edge.v2 = target;
-					edges.insert(make_pair(key, edge));
-					//edges[key] = edge;
-				}
-				else
-				{
-					pair<int, int> key;
-					key = make_pair(target, source);
-					Edge edge;
-					edge.v1 = target;
-					edge.v2 = source;
-					edges.insert(make_pair(key, edge));
-					//edges[key] = edge;
-				}
-			}
-		}
-		delete[] count;
-		fin.close();
-	}
+    }
 }
 
 void Graph::build_neighb_edges()
 {
-    for (int i = 0; i < num_vertices; ++i)
-    {
+    for (int i = 0; i < num_vertices; ++i) {
         vertex[i].neighb_edge.reserve(vertex[i].degree);
-        for (int j = 0; j < vertex[i].degree; ++j)
-        {
+        for (int j = 0; j < vertex[i].degree; ++j) {
             std::pair<int, int> edge;
-            if (i < vertex[i].neighbors[j])
-            {
+            if (i < vertex[i].neighbors[j]) {
                 edge = std::make_pair(i, vertex[i].neighbors[j]);
-            }
-            else
-            {
+            } else {
                 edge = std::make_pair(vertex[i].neighbors[j], i);
             }
             auto it = edges.find(edge);
@@ -408,42 +298,35 @@ void Graph::build_neighb_edges()
     }
 }
 
-Graph::~Graph()
-{
-	//cout << "In graph destructor\n\n";
-	delete[] vertex;
-}
-
 Vertex::~Vertex()
 {
 //	cout << "In vertex destructor\n\n";
-	if (neighbors != nullptr)
-	{
-		delete[] neighbors;
-		neighbors = nullptr;
-	}
+    if (neighbors != nullptr) {
+        delete[] neighbors;
+        neighbors = nullptr;
+    }
 
-	if(common != nullptr)
-	{
-		delete[] common;
-		common = nullptr;
-	}
+    if (common != nullptr) {
+        delete[] common;
+        common = nullptr;
+    }
 }
 
 void Graph::displayCount()
 {
-	int total_degree = 0;
-	cout<<"The number of vertices in this graph is = "<<num_vertices<<"\n";
-	for(int i=0; i < num_vertices; i++)
-	{
-		total_degree+=vertex[i].degree;
-	}
-	cout<<"The number of edges in this graph is = "<<total_degree/2<<"\n";
+    int total_degree = 0;
+    cout << "The number of vertices in this graph is = " << num_vertices
+            << "\n";
+    for (int i = 0; i < num_vertices; i++) {
+        total_degree += vertex[i].degree;
+    }
+    cout << "The number of edges in this graph is = " << total_degree / 2
+            << "\n";
 }
 
 Edge::Edge()
 {
-	initPhm = 1.0;
-	phm = 1.0;
-	nVisited = 0;
+    initPhm = 1.0;
+    phm = 1.0;
+    nVisited = 0;
 }

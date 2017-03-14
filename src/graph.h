@@ -4,14 +4,13 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
+#include <map>
 #include <functional>
 #include <cstring>
 #include <utility>
 #include <string>
 #include <vector>
-
-using namespace std;
-
+#include <cstdint>
 
 /*
  * Specialize std::hash for pair so we can use it as a key
@@ -21,7 +20,7 @@ using namespace std;
  * unordered-set-that-has-elements-that-are-vector-of-pairint-int?rq=1
  */
 template <class T>
-inline void hash_combine(std::size_t & seed, const T & v)
+inline void hash_combine(std::size_t& seed, const T& v)
 {
   std::hash<T> hasher;
   seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -29,7 +28,8 @@ inline void hash_combine(std::size_t & seed, const T & v)
 
 namespace std
 {
-  template<typename S, typename T> struct hash<pair<S, T> >
+  template<typename S, typename T>
+  struct hash<pair<S, T>>
   {
     inline size_t operator()(const pair<S, T> & v) const
     {
@@ -41,49 +41,72 @@ namespace std
   };
 }
 
-class Edge
+enum class GraphFormat : uint8_t
 {
-	public:
-		Edge();
-		int v1;
-		int v2;  //the two end points
-		double phm; //pheromone value for the edge
-		double initPhm; //initial pheromone value of the edge
-		int nVisited; //number of times this edge has been visited by ants
+    GRAPH_FORMAT_PAJEK,
+    GRAPH_FORMAT_GML,
+    GRAPH_FORMAT_EDGELIST
 };
 
-class Vertex
+/**
+ * Describes whether the vertex indices in the source
+ * file are 1-based or 0-based
+ */
+enum class GraphIndex : uint8_t
 {
-	public:
-		int id; //id of a vertex
-		int degree; //degree of each vertex
-		int * neighbors; //set of 1-hop neighbors of this vertex
-		int * common; //intersection size with each neighbor of this vertex
-//        int node_id; //stores the node id (which can be different from the id above)
-        std::vector<Edge*> neighb_edge;
+    GRAPH_INDEX_ZERO_BASED,
+    GRAPH_INDEX_ONE_BASED
+};
 
-//		std::vector<int> neighbors;
-//		std::vector<int> common;
 
-		~Vertex(); //destructor for the vertex
+struct Edge
+{
+    int64_t v1 = -1;
+    int64_t v2 = -1;
+};
+
+using EdgeKey = std::pair<int64_t, int64_t>;
+
+struct Vertex
+{
+    int64_t id      = -1;
+    int64_t degree  = 0;
+    std::vector<int64_t> neighbors;
+    std::vector<int64_t> common;
+    //std::vector<Edge*> neighb_edges;
 };
 
 class Graph
 {
 	public:
-		int num_vertices; //total number of vertices in the graph
-		int num_edges; //total number of edges in the graph
+		uint64_t num_vertices   = 0;
+		uint64_t num_edges      = 0;
+		std::vector<Vertex> vertices;
+		std::map<int64_t, int64_t> edges;
 
-		Vertex * vertex; //array of vertices
-		//std::vector<Vertex> vertex;
-
-		unordered_map<pair<int, int>, Edge> edges;
-
-		Graph(char* fileName); // graph constructor
+		Graph(const std::string& file_name,
+		      GraphFormat _format = GraphFormat::GRAPH_FORMAT_PAJEK,
+		      GraphIndex _idx_type = GraphIndex::GRAPH_INDEX_ONE_BASED);
 
 		void displayCount();
-		~Graph(); //graph destructor
         void build_neighb_edges();
+
+	private:
+        // assume that the vertices in the source file are 1-based
+        // and the format is Pajek
+        GraphIndex idx_type = GraphIndex::GRAPH_INDEX_ONE_BASED;
+        GraphFormat format = GraphFormat::GRAPH_FORMAT_PAJEK;
+
+        // internal file handle for the source file, closed after constructor completes
+        std::ifstream fin;
+
+        void parse_pajek();
+        void parse_gml();
+        void parse_edgelist();
+
+        uint64_t count_vertices_pajek();
+        uint64_t count_vertices_gml();
+        void reset_file_pointer();
 };
 
 #endif /* GRAPH_H_ */
