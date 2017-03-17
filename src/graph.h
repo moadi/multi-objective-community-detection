@@ -152,15 +152,28 @@ class Graph
         }
 
         template<typename T>
-        void process_edge(T source, T target)
+        void check_vertex_ids(const T& v1, const T& v2)
         {
-            update_index(source, target);
-            assert((source >= 0 && target >= 0) && "Vertex id less than 0");
+            assert((v1 >= 0 && v2 >= 0) && "Vertex id less than 0");
+        }
+
+        template<typename T>
+        void update_vertices(const T& source, const T& target)
+        {
             vertices[source].degree++;
             vertices[target].degree++;
             vertices[source].neighbors.push_back(target);
             vertices[target].neighbors.push_back(source);
-            add_edge_to_map(source, target);
+        }
+
+        template<typename T>
+        void process_edge(T source, T target, bool skip_map_add = false)
+        {
+            update_index(source, target);
+            check_vertex_ids(source, target);
+            update_vertices(source, target);
+            if (!skip_map_add)
+                add_edge_to_map(source, target);
         }
 };
 

@@ -39,6 +39,12 @@ global_env["LINK"] = os.getenv("LINK") or global_env["LINK"]
 global_env["ENV"].update(x for x in os.environ.items() if x[0].startswith("CCC_"))
 global_env["CXXFLAGS"] = "-std=c++11 -pthread"
 
+cppdefines = []
+for key, value in ARGLIST:
+	if key == 'define':
+		cppdefines.append(value)
+
+global_env.Append(CPPDEFINES = cppdefines)
 # --------------------------------------------------
 # Global options
 # --------------------------------------------------

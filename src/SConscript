@@ -21,13 +21,6 @@ options = Split("""
 """)
 options.extend(global_options)
 
-# Command line flags
-commandline_defines = []
-for key, value in ARGLIST:
-    if key == 'define':
-        commandline_defines.append('-D' + value)
-options.extend(commandline_defines)
-
 # --------------------------------------------------
 # Target specific compile flags Example
 # --------------------------------------------------

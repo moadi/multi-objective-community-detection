@@ -8,7 +8,12 @@
 #include "graph.h"
 #include "logging.h"
 
+#include <set>
+#include <chrono>
+
 #include <cinttypes>
+
+using Clock = std::chrono::steady_clock;
 
 void Graph::reset_file_pointer()
 {
@@ -77,7 +82,7 @@ void Graph::parse_pajek()
     //Skip till edge list starts
     do
     {
-        getline(fin, line);
+        std::getline(fin, line);
         if (std::string::npos != line.find("Edges") ||
             std::string::npos != line.find("Arcs")) {
 
@@ -129,7 +134,7 @@ void Graph::parse_gml()
         source = target = -1;
         do
         {
-            getline(fin, line);
+            std::getline(fin, line);
             index = line.find("source");
             if (std::string::npos != (index = line.find("source"))) {
                 location = &line[index];
@@ -175,6 +180,10 @@ Graph::Graph(const std::string& file_name,
         idx_type(_idx_type),
         format(_format)
 {
+#ifdef TIME_GRAPH_PARSE
+    auto start = Clock::now();
+#endif
+
     if(format == GraphFormat::GRAPH_FORMAT_UNKNOWN)
     {
         std::cerr << "Unknown file format, aborting...\n";
@@ -196,6 +205,11 @@ Graph::Graph(const std::string& file_name,
         parse_gml();
 
     fin.close();
+
+#ifdef TIME_GRAPH_PARSE
+    std::chrono::duration<double> time_taken = Clock::now() - start;
+    log_msg("Time taken to parse graph = %lld ms", std::chrono::duration_cast<std::chrono::milliseconds>(time_taken).count());
+#endif
     done_parsing();
 }
 
@@ -220,5 +234,28 @@ void Graph::build_neighb_edges()
 
 void Graph::parse_edgelist()
 {
+    log_msg("Entering %s", __func__);
 
+    int64_t source = -1;
+    int64_t target = -1;
+    std::set<int64_t> nodes;
+
+    while(fin >> source >> target)
+    {
+        update_index(source, target);
+        check_vertex_ids(source, target);
+        nodes.insert(source);
+        nodes.insert(target);
+        add_edge_to_map(source, target);
+    }
+
+    num_vertices = nodes.size();
+    vertices.resize(num_vertices);
+
+    for(const auto& e : edges)
+    {
+        const EdgeKey& key = e.first;
+        update_vertices(key.first, key.second);
+    }
+    log_msg("Leaving %s", __func__);
 }
