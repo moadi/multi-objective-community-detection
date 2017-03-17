@@ -70,7 +70,7 @@ if GetOption('debug_build'):
     global_env["CXX"] += " -fstandalone-debug"
     build_name = "Debug"
     debug_target = True
-
+    global_env.Append(CPPDEFINES = ['DEBUG_TARGET'])
     # Configure for Debugger symbols
     if GetOption('lldb'):
         extra_options.extend(Split("-glldb"))
@@ -123,7 +123,6 @@ build_options = {
 ##################################################
 # Set the build targets
 ##################################################
-global_env.Append(CPPDEFINES = { 'DEBUG_TARGET': str(int(debug_target)) })
 
 build_targets = [
   'src'

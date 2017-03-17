@@ -131,7 +131,6 @@ void Graph::parse_gml()
         do
         {
             std::getline(fin, line);
-            index = line.find("source");
             if (std::string::npos != (index = line.find("source"))) {
                 location = &line[index];
                 sscanf(location, "source %lli", &source);
