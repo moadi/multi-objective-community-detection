@@ -8,7 +8,7 @@
 #include "graph.h"
 #include "logging.h"
 
-#include <set>
+#include <unordered_set>
 #include <chrono>
 
 #include <cinttypes>
@@ -90,10 +90,6 @@ void Graph::parse_pajek()
         }
     } while (!fin.eof());
 
-    // Parse the edges listed in the pajek file
-    // and build up the degree count and neighbor
-    // list
-    uint64_t edge_counter = 0;
     int64_t source = -1, target = -1;
     while (fin >> source >> target)
     {
@@ -238,7 +234,7 @@ void Graph::parse_edgelist()
 
     int64_t source = -1;
     int64_t target = -1;
-    std::set<int64_t> nodes;
+    std::unordered_set<int64_t> nodes;
 
     while(fin >> source >> target)
     {

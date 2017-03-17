@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import multiprocessing
 
 AddOption(
         '--debug-build',
@@ -50,7 +51,11 @@ global_env.Append(CPPDEFINES = cppdefines)
 # --------------------------------------------------
 global_options = Split("""
 -Wno-c++98-compat
+-Wno-format-security
 """)
+
+cpu_count = multiprocessing.cpu_count()
+SetOption('num_jobs', cpu_count/2)
 
 # --------------------------------------------------
 # Build Options

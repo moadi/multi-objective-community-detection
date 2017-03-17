@@ -107,7 +107,6 @@ class Graph
 		      GraphFormat _format = GraphFormat::GRAPH_FORMAT_UNKNOWN,
 		      GraphIndex _idx_type = GraphIndex::GRAPH_INDEX_ONE_BASED);
 
-		void displayCount();
         void build_neighb_edges();
 
 	private:
@@ -167,13 +166,12 @@ class Graph
         }
 
         template<typename T>
-        void process_edge(T source, T target, bool skip_map_add = false)
+        void process_edge(T source, T target)
         {
             update_index(source, target);
             check_vertex_ids(source, target);
             update_vertices(source, target);
-            if (!skip_map_add)
-                add_edge_to_map(source, target);
+            add_edge_to_map(source, target);
         }
 };
 
