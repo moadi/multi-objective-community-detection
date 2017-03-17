@@ -4,13 +4,16 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
-#include <map>
 #include <functional>
 #include <cstring>
 #include <utility>
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <cassert>
+
+#include "logging.h"
+
 
 /*
  * Specialize std::hash for pair so we can use it as a key
@@ -43,6 +46,7 @@ namespace std
 
 enum class GraphFormat : uint8_t
 {
+    GRAPH_FORMAT_UNKNOWN,
     GRAPH_FORMAT_PAJEK,
     GRAPH_FORMAT_GML,
     GRAPH_FORMAT_EDGELIST
@@ -58,14 +62,27 @@ enum class GraphIndex : uint8_t
     GRAPH_INDEX_ONE_BASED
 };
 
-
-struct Edge
+/*struct Hash
 {
-    int64_t v1 = -1;
-    int64_t v2 = -1;
-};
+    inline size_t operator()(const Edge& e) const
+    {
+        size_t seed = 0;
+        ::hash_combine(seed, e.v1);
+        ::hash_combine(seed, e.v2);
+        return seed;
+    }
+};*/
 
 using EdgeKey = std::pair<int64_t, int64_t>;
+
+inline EdgeKey form_edge(int64_t v1, int64_t v2)
+{
+    assert(v1 != v2 && "Self loop detected, aborting");
+    if(v1 <  v2)
+        return std::make_pair(v1, v2);
+    else
+        return std::make_pair(v2, v1);
+}
 
 struct Vertex
 {
@@ -81,11 +98,13 @@ class Graph
 	public:
 		uint64_t num_vertices   = 0;
 		uint64_t num_edges      = 0;
+		uint64_t degree_sum     = 0;
+		double avg_degree       = 0;
 		std::vector<Vertex> vertices;
-		std::map<int64_t, int64_t> edges;
+		std::unordered_map<EdgeKey, int> edges;
 
 		Graph(const std::string& file_name,
-		      GraphFormat _format = GraphFormat::GRAPH_FORMAT_PAJEK,
+		      GraphFormat _format = GraphFormat::GRAPH_FORMAT_UNKNOWN,
 		      GraphIndex _idx_type = GraphIndex::GRAPH_INDEX_ONE_BASED);
 
 		void displayCount();
@@ -107,6 +126,42 @@ class Graph
         uint64_t count_vertices_pajek();
         uint64_t count_vertices_gml();
         void reset_file_pointer();
+
+        void done_parsing();
+
+        double calc_avg_degree();
+
+        void add_edge_to_map(int64_t v1, int64_t v2)
+        {
+            EdgeKey e = form_edge(v1, v2);
+            auto it = edges.find(e);
+            if(it == edges.end())
+                edges[e] = 1;
+            else
+                log_msg("Duplicate edge encountered: (%lld, %lld), ignoring...", v1, v2);
+        }
+
+        template<typename T>
+        void update_index(T& v1, T& v2)
+        {
+            if(idx_type == GraphIndex::GRAPH_INDEX_ONE_BASED)
+            {
+                --v1;
+                --v2;
+            }
+        }
+
+        template<typename T>
+        void process_edge(T source, T target)
+        {
+            update_index(source, target);
+            assert((source >= 0 && target >= 0) && "Vertex id less than 0");
+            vertices[source].degree++;
+            vertices[target].degree++;
+            vertices[source].neighbors.push_back(target);
+            vertices[target].neighbors.push_back(source);
+            add_edge_to_map(source, target);
+        }
 };
 
 #endif /* GRAPH_H_ */
