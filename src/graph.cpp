@@ -170,10 +170,9 @@ void Graph::done_parsing()
 
 Graph::Graph(const std::string& file_name,
              GraphFormat _format,
-             GraphIndex _idx_type) :
-
-        idx_type(_idx_type),
-        format(_format)
+             GraphIndex _idx_type)
+    : idx_type(_idx_type)
+    , format(_format)
 {
 #ifdef TIME_GRAPH_PARSE
     auto start = Clock::now();
